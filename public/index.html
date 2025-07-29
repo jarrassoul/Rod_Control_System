@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VWDS - Vehicle Weight Detection System</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal active">
+        <div class="modal-content">
+            <div class="login-container">
+                <div class="login-header">
+                    <i class="fas fa-truck icon"></i>
+                    <h2>VWDS Admin Portal</h2>
+                    <p>Vehicle Weight Detection System</p>
+                </div>
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <i class="fas fa-user"></i>
+                        <input type="text" id="username" placeholder="Username" required>
+                    </div>
+                    <div class="form-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="password" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-sign-in-alt"></i>
+                        Login
+                    </button>
+                </form>
+                <div class="demo-accounts">
+                    <p>Demo Account:</p>
+                    <small>Username: admin | Password: admin123</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="app" class="app-container" style="display: none;">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-truck"></i>
+                <h3>VWDS</h3>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="#dashboard" class="nav-link active"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li id="usersMenu" style="display: none;"><a href="#users" class="nav-link"><i class="fas fa-users"></i> Users</a></li>
+                <li id="vehiclesMenu" style="display: none;"><a href="#vehicles" class="nav-link"><i class="fas fa-car"></i> Vehicles</a></li>
+                <li id="routesMenu" style="display: none;"><a href="#routes" class="nav-link"><i class="fas fa-route"></i> Routes</a></li>
+                <li id="ticketsMenu"><a href="#tickets" class="nav-link"><i class="fas fa-ticket-alt"></i> Tickets</a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span id="currentUser"></span>
+                    <span id="currentRole" class="role-badge"></span>
+                </div>
+                <button id="logoutBtn" class="btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Logout
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard -->
+            <div id="dashboardSection" class="section active">
+                <div class="section-header">
+                    <h2><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalTickets">0</h3>
+                            <p>Total Tickets</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-car"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalVehicles">0</h3>
+                            <p>Total Vehicles</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-route"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalRoutes">0</h3>
+                            <p>Total Routes</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalUsers">0</h3>
+                            <p>Total Users</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Section -->
+            <div id="usersSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-users"></i> User Management</h2>
+                    <button id="addUserBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Add User
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="usersTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Vehicles Section -->
+            <div id="vehiclesSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-car"></i> Vehicle Management</h2>
+                    <button id="addVehicleBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Add Vehicle
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="vehiclesTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>License Plate</th>
+                                <th>Type</th>
+                                <th>Weight (kg)</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Routes Section -->
+            <div id="routesSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-route"></i> Route Management</h2>
+                    <button id="addRouteBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Add Route
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="routesTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Length (km)</th>
+                                <th>Weight Restriction (kg)</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tickets Section -->
+            <div id="ticketsSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-ticket-alt"></i> Ticket Management</h2>
+                    <button id="addTicketBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Generate Ticket
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="ticketsTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date/Time</th>
+                                <th>License Plate</th>
+                                <th>Route</th>
+                                <th>Officer</th>
+                                <th>Violation Details</th>
+                                <th>Fine Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Forms -->
+    <div id="formModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Form</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- Dynamic form content -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
