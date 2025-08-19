@@ -57,15 +57,19 @@ const authorizeRole = (roles) => {
 
 // Login endpoint
 app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, role } = req.body;
 
-    db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
+    if (!username || !password || !role) {
+        return res.status(400).json({ error: 'Username, password, and role are required' });
+    }
+
+    db.get('SELECT * FROM users WHERE username = ? AND role = ?', [username, role], async (err, user) => {
         if (err) {
             return res.status(500).json({ error: 'Database error' });
         }
 
         if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'Invalid credentials or role' });
         }
 
         const validPassword = await bcrypt.compare(password, user.password);
@@ -309,17 +313,97 @@ app.get('/api/tickets', authenticateToken, (req, res) => {
 });
 
 app.post('/api/tickets', authenticateToken, authorizeRole(['admin', 'police_officer']), (req, res) => {
-    const { vehicle_id, route_id, violationDetails, fine_amount } = req.body;
+    const { vehicle_id, route_id, violationDetails, fine_amount, ticket_type, licensePlate, routeName } = req.body;
     const officer_id = req.user.id;
 
-    db.run(
-        'INSERT INTO Ticket (vehicle_id, route_id, officer_id, violationDetails, fine_amount) VALUES (?, ?, ?, ?, ?)',
-        [vehicle_id, route_id, officer_id, violationDetails, fine_amount || 0],
-        function(err) {
+    // If license plate is provided instead of vehicle_id, find the vehicle
+    if (licensePlate && !vehicle_id) {
+        db.get('SELECT id FROM Vehicle WHERE licensePlate = ?', [licensePlate], (err, vehicle) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error finding vehicle' });
+            }
+            if (!vehicle) {
+                return res.status(404).json({ error: 'Vehicle not found' });
+            }
+            
+            // Continue with route lookup if needed
+            if (routeName && !route_id) {
+                db.get('SELECT id FROM Route WHERE name = ?', [routeName], (err, route) => {
+                    if (err) {
+                        return res.status(500).json({ error: 'Database error finding route' });
+                    }
+                    if (!route) {
+                        return res.status(404).json({ error: 'Route not found' });
+                    }
+                    
+                    // Create ticket with found IDs
+                    createTicket(vehicle.id, route.id);
+                });
+            } else {
+                createTicket(vehicle.id, route_id);
+            }
+        });
+    } else if (routeName && !route_id) {
+        db.get('SELECT id FROM Route WHERE name = ?', [routeName], (err, route) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error finding route' });
+            }
+            if (!route) {
+                return res.status(404).json({ error: 'Route not found' });
+            }
+            createTicket(vehicle_id, route.id);
+        });
+    } else {
+        createTicket(vehicle_id, route_id);
+    }
+
+    function createTicket(vId, rId) {
+        db.run(
+            'INSERT INTO Ticket (vehicle_id, route_id, officer_id, violationDetails, fine_amount, ticket_type) VALUES (?, ?, ?, ?, ?, ?)',
+            [vId, rId, officer_id, violationDetails, fine_amount || 0, ticket_type || 'violation'],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Database error creating ticket' });
+                }
+                res.status(201).json({ id: this.lastID, message: 'Ticket created successfully' });
+            }
+        );
+    }
+});
+
+// Auto-complete endpoints
+app.get('/api/vehicles/search', authenticateToken, (req, res) => {
+    const { query } = req.query;
+    if (!query || query.length < 1) {
+        return res.json([]);
+    }
+
+    db.all(
+        'SELECT licensePlate, type, weight FROM Vehicle WHERE licensePlate LIKE ? OR type LIKE ? LIMIT 10',
+        [`%${query}%`, `%${query}%`],
+        (err, vehicles) => {
             if (err) {
                 return res.status(500).json({ error: 'Database error' });
             }
-            res.status(201).json({ id: this.lastID, message: 'Ticket created successfully' });
+            res.json(vehicles);
+        }
+    );
+});
+
+app.get('/api/routes/search', authenticateToken, (req, res) => {
+    const { query } = req.query;
+    if (!query || query.length < 1) {
+        return res.json([]);
+    }
+
+    db.all(
+        'SELECT name, weightRestriction FROM Route WHERE name LIKE ? LIMIT 10',
+        [`%${query}%`],
+        (err, routes) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            res.json(routes);
         }
     );
 });

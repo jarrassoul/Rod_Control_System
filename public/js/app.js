@@ -9,9 +9,7 @@ class VWDSApp {
 
     init() {
         if (this.token && this.user) {
-            this.showApp();
-            this.setupEventListeners();
-            this.loadDashboard();
+            this.showRoleSpecificPortal();
         } else {
             this.showLogin();
         }
@@ -19,44 +17,30 @@ class VWDSApp {
 
     showLogin() {
         document.getElementById('loginModal').classList.add('active');
-        document.getElementById('app').style.display = 'none';
         
-        document.getElementById('loginForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.login();
-        });
-    }
-
-    showApp() {
-        document.getElementById('loginModal').classList.remove('active');
-        document.getElementById('app').style.display = 'flex';
+        // Hide all portals
+        document.getElementById('adminPortal').style.display = 'none';
+        document.getElementById('policePortal').style.display = 'none';
+        document.getElementById('dataEntryPortal').style.display = 'none';
         
-        // Update user info
-        document.getElementById('currentUser').textContent = this.user.username;
-        document.getElementById('currentRole').textContent = this.user.role.replace('_', ' ').toUpperCase();
-        
-        // Show/hide menu items based on role
-        this.setupRoleBasedUI();
-    }
-
-    setupRoleBasedUI() {
-        const role = this.user.role;
-        
-        // Show menus based on role
-        if (role === 'admin') {
-            document.getElementById('usersMenu').style.display = 'block';
-            document.getElementById('vehiclesMenu').style.display = 'block';
-            document.getElementById('routesMenu').style.display = 'block';
-        } else if (role === 'data_entry') {
-            document.getElementById('vehiclesMenu').style.display = 'block';
-            document.getElementById('routesMenu').style.display = 'block';
+        // Add event listener only once
+        const loginForm = document.getElementById('loginForm');
+        if (!loginForm.hasEventListener) {
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.login();
+            });
+            loginForm.hasEventListener = true;
         }
-        // police_officer can only see dashboard and tickets (already visible)
     }
+
 
     async login() {
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
+        const role = document.getElementById('role').value;
+
+        console.log('Login attempt:', { username, role }); // Debug log
 
         try {
             const response = await fetch('/api/login', {
@@ -64,10 +48,11 @@ class VWDSApp {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({ username, password, role })
             });
 
             const data = await response.json();
+            console.log('Login response:', data); // Debug log
 
             if (response.ok) {
                 this.token = data.token;
@@ -76,15 +61,240 @@ class VWDSApp {
                 localStorage.setItem('vwds_token', this.token);
                 localStorage.setItem('vwds_user', JSON.stringify(this.user));
                 
-                this.showApp();
-                this.setupEventListeners();
-                this.loadDashboard();
+                console.log('Calling showRoleSpecificPortal for role:', this.user.role); // Debug log
+                this.showRoleSpecificPortal();
             } else {
                 this.showAlert(data.error, 'error');
             }
         } catch (error) {
+            console.error('Login error:', error); // Debug log
             this.showAlert('Login failed. Please try again.', 'error');
         }
+    }
+
+    showRoleSpecificPortal() {
+        console.log('showRoleSpecificPortal called for user:', this.user); // Debug log
+        
+        document.getElementById('loginModal').classList.remove('active');
+        
+        // Hide all portals first
+        document.getElementById('adminPortal').style.display = 'none';
+        document.getElementById('policePortal').style.display = 'none';
+        document.getElementById('dataEntryPortal').style.display = 'none';
+        
+        // Show role-specific portal
+        console.log('User role:', this.user.role); // Debug log
+        switch(this.user.role) {
+            case 'admin':
+                console.log('Showing admin portal'); // Debug log
+                document.getElementById('adminPortal').style.display = 'flex';
+                document.getElementById('adminCurrentUser').textContent = this.user.username;
+                this.currentPortal = 'admin';
+                break;
+            case 'police_officer':
+                console.log('Showing police portal'); // Debug log
+                document.getElementById('policePortal').style.display = 'flex';
+                document.getElementById('policeCurrentUser').textContent = this.user.username;
+                this.currentPortal = 'police';
+                break;
+            case 'data_entry':
+                console.log('Showing data entry portal'); // Debug log
+                document.getElementById('dataEntryPortal').style.display = 'flex';
+                document.getElementById('dataEntryCurrentUser').textContent = this.user.username;
+                this.currentPortal = 'dataEntry';
+                break;
+            default:
+                console.error('Unknown role:', this.user.role); // Debug log
+        }
+        
+        this.setupEventListeners();
+        this.loadPortalContent();
+    }
+
+    loadPortalContent() {
+        const contentContainer = document.getElementById(this.currentPortal + 'MainContent');
+        
+        // Load dashboard content by default
+        contentContainer.innerHTML = this.getDashboardHTML();
+        this.loadDashboard();
+        
+        // Load role-specific sections
+        switch(this.currentPortal) {
+            case 'admin':
+                this.loadAdminSections(contentContainer);
+                break;
+            case 'police':
+                this.loadPoliceSections(contentContainer);
+                break;
+            case 'dataEntry':
+                this.loadDataEntrySections(contentContainer);
+                break;
+        }
+        
+        // Setup event listeners for dynamically created buttons
+        this.setupDynamicEventListeners();
+    }
+
+    getDashboardHTML() {
+        return `
+            <div id="dashboardSection" class="section active">
+                <div class="section-header">
+                    <h2><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalTickets">0</h3>
+                            <p>Total Tickets</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-car"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalVehicles">0</h3>
+                            <p>Total Vehicles</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-route"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalRoutes">0</h3>
+                            <p>Total Routes</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalUsers">0</h3>
+                            <p>Total Users</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    loadAdminSections(container) {
+        container.innerHTML += `
+            <!-- Users Section -->
+            <div id="usersSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-users"></i> User Management</h2>
+                    <button id="addUserBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Add User
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="usersTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        ` + this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML();
+    }
+
+    loadPoliceSections(container) {
+        container.innerHTML += this.getTicketsHTML(true) + this.getVehiclesHTML(false) + this.getRoutesHTML(false);
+    }
+
+    loadDataEntrySections(container) {
+        container.innerHTML += this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML(false);
+    }
+
+    getVehiclesHTML(canEdit = true) {
+        return `
+            <div id="vehiclesSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-car"></i> ${canEdit ? 'Vehicle Management' : 'View Vehicles'}</h2>
+                    ${canEdit ? '<button id="addVehicleBtn" class="btn-primary"><i class="fas fa-plus"></i> Add Vehicle</button>' : ''}
+                </div>
+                <div class="table-container">
+                    <table id="vehiclesTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>License Plate</th>
+                                <th>Type</th>
+                                <th>Weight (kg)</th>
+                                <th>Created</th>
+                                ${canEdit ? '<th>Actions</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    getRoutesHTML(canEdit = true) {
+        return `
+            <div id="routesSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-route"></i> ${canEdit ? 'Route Management' : 'View Routes'}</h2>
+                    ${canEdit ? '<button id="addRouteBtn" class="btn-primary"><i class="fas fa-plus"></i> Add Route</button>' : ''}
+                </div>
+                <div class="table-container">
+                    <table id="routesTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Length (km)</th>
+                                <th>Weight Restriction (kg)</th>
+                                <th>Created</th>
+                                ${canEdit ? '<th>Actions</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    getTicketsHTML(canGenerate = false) {
+        return `
+            <div id="ticketsSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-ticket-alt"></i> ${canGenerate ? 'Generate Tickets' : 'View Tickets'}</h2>
+                    ${canGenerate ? '<button id="addTicketBtn" class="btn-primary"><i class="fas fa-plus"></i> Generate Ticket</button>' : ''}
+                </div>
+                <div class="table-container">
+                    <table id="ticketsTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date/Time</th>
+                                <th>License Plate</th>
+                                <th>Route</th>
+                                <th>Officer</th>
+                                <th>Type</th>
+                                <th>Violation Details</th>
+                                <th>Fine Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        `;
     }
 
     logout() {
@@ -105,16 +315,43 @@ class VWDSApp {
             });
         });
 
-        // Logout
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            this.logout();
+        // Logout buttons for all portals
+        const logoutBtns = ['adminLogoutBtn', 'policeLogoutBtn', 'dataEntryLogoutBtn'];
+        logoutBtns.forEach(btnId => {
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    this.logout();
+                });
+            }
         });
+    }
 
-        // Add buttons
-        document.getElementById('addUserBtn')?.addEventListener('click', () => this.showUserForm());
-        document.getElementById('addVehicleBtn')?.addEventListener('click', () => this.showVehicleForm());
-        document.getElementById('addRouteBtn')?.addEventListener('click', () => this.showRouteForm());
-        document.getElementById('addTicketBtn')?.addEventListener('click', () => this.showTicketForm());
+    setupDynamicEventListeners() {
+        // Add buttons - these are created dynamically after portal content is loaded
+        const addUserBtn = document.getElementById('addUserBtn');
+        if (addUserBtn && !addUserBtn.hasListener) {
+            addUserBtn.addEventListener('click', () => this.showUserForm());
+            addUserBtn.hasListener = true;
+        }
+
+        const addVehicleBtn = document.getElementById('addVehicleBtn');
+        if (addVehicleBtn && !addVehicleBtn.hasListener) {
+            addVehicleBtn.addEventListener('click', () => this.showVehicleForm());
+            addVehicleBtn.hasListener = true;
+        }
+
+        const addRouteBtn = document.getElementById('addRouteBtn');
+        if (addRouteBtn && !addRouteBtn.hasListener) {
+            addRouteBtn.addEventListener('click', () => this.showRouteForm());
+            addRouteBtn.hasListener = true;
+        }
+
+        const addTicketBtn = document.getElementById('addTicketBtn');
+        if (addTicketBtn && !addTicketBtn.hasListener) {
+            addTicketBtn.addEventListener('click', () => this.showTicketForm());
+            addTicketBtn.hasListener = true;
+        }
     }
 
     showSection(sectionName) {
@@ -307,17 +544,29 @@ class VWDSApp {
 
         tickets.forEach(ticket => {
             const row = document.createElement('tr');
+            const ticketTypeDisplay = this.formatTicketType(ticket.ticket_type);
             row.innerHTML = `
                 <td>${new Date(ticket.dateTime).toLocaleString()}</td>
                 <td><strong>${ticket.licensePlate}</strong></td>
                 <td>${ticket.routeName}</td>
                 <td>${ticket.officerName || 'N/A'}</td>
+                <td><span class="ticket-type-badge ticket-type-${ticket.ticket_type}">${ticketTypeDisplay}</span></td>
                 <td>${ticket.violationDetails}</td>
                 <td>$${ticket.fine_amount}</td>
                 <td><span class="status-badge status-${ticket.status}">${ticket.status.toUpperCase()}</span></td>
             `;
             tbody.appendChild(row);
         });
+    }
+
+    formatTicketType(type) {
+        switch(type) {
+            case 'speed': return 'Speeding';
+            case 'overload': return 'Overload';
+            case 'illegal_parking': return 'Illegal Parking';
+            case 'other': return 'Other';
+            default: return 'Violation';
+        }
     }
 
     showUserForm(userId = null) {
@@ -583,67 +832,197 @@ class VWDSApp {
     }
 
     async showTicketForm() {
-        try {
-            const [vehicles, routes] = await Promise.all([
-                this.makeRequest('/api/vehicles'),
-                this.makeRequest('/api/routes')
-            ]);
-
-            const vehicleOptions = vehicles.map(v => `<option value="${v.id}">${v.licensePlate} - ${v.type}</option>`).join('');
-            const routeOptions = routes.map(r => `<option value="${r.id}">${r.name} (${r.weightRestriction}kg limit)</option>`).join('');
-
-            const form = `
-                <form id="ticketForm">
-                    <div class="form-row">
-                        <div class="form-col">
-                            <label>Vehicle</label>
-                            <select id="ticketVehicle" required>
-                                <option value="">Select Vehicle</option>
-                                ${vehicleOptions}
-                            </select>
+        const form = `
+            <form id="ticketForm">
+                <div class="form-row">
+                    <div class="form-col">
+                        <label>License Plate Number *</label>
+                        <div class="autocomplete-container">
+                            <input type="text" id="ticketLicensePlate" placeholder="Enter license plate (e.g., ABC-1234)" required>
+                            <div id="licensePlateDropdown" class="autocomplete-dropdown"></div>
                         </div>
-                        <div class="form-col">
-                            <label>Route</label>
-                            <select id="ticketRoute" required>
-                                <option value="">Select Route</option>
-                                ${routeOptions}
-                            </select>
+                        <div id="vehicleInfo" class="vehicle-info" style="display: none;">
+                            <small><strong>Vehicle:</strong> <span id="vehicleDetails"></span></small>
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-col">
-                            <label>Fine Amount ($)</label>
-                            <input type="number" id="ticketFineAmount" step="0.01" value="0" required>
+                    <div class="form-col">
+                        <label>Route Name *</label>
+                        <div class="autocomplete-container">
+                            <input type="text" id="ticketRouteName" placeholder="Enter route name" required>
+                            <div id="routeDropdown" class="autocomplete-dropdown"></div>
+                        </div>
+                        <div id="routeInfo" class="route-info" style="display: none;">
+                            <small><strong>Weight Limit:</strong> <span id="routeDetails"></span></small>
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-col">
-                            <label>Violation Details</label>
-                            <textarea id="ticketViolationDetails" placeholder="Describe the weight violation..." required></textarea>
-                        </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-col">
+                        <label>Ticket Type *</label>
+                        <select id="ticketType" required>
+                            <option value="">Select Violation Type</option>
+                            <option value="speed">Speeding</option>
+                            <option value="overload">Overload</option>
+                            <option value="illegal_parking">Illegal Parking</option>
+                            <option value="other">Other</option>
+                        </select>
                     </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
-                        <button type="submit" class="btn-primary">Generate Ticket</button>
+                    <div class="form-col">
+                        <label>Fine Amount ($)</label>
+                        <input type="number" id="ticketFineAmount" step="0.01" value="0" required>
                     </div>
-                </form>
-            `;
+                </div>
+                <div class="form-row">
+                    <div class="form-col">
+                        <label>Violation Details *</label>
+                        <textarea id="ticketViolationDetails" placeholder="Describe the violation details..." required></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Generate Ticket</button>
+                </div>
+            </form>
+        `;
 
-            this.showModal('Generate Ticket', form);
+        this.showModal('Generate Ticket', form);
 
-            document.getElementById('ticketForm').addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.saveTicket();
-            });
-        } catch (error) {
-            console.error('Failed to load ticket form data:', error);
+        // Setup autocomplete for license plates
+        this.setupLicensePlateAutocomplete();
+        this.setupRouteAutocomplete();
+
+        document.getElementById('ticketForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveTicket();
+        });
+    }
+
+    setupLicensePlateAutocomplete() {
+        const input = document.getElementById('ticketLicensePlate');
+        const dropdown = document.getElementById('licensePlateDropdown');
+        let debounceTimer;
+
+        input.addEventListener('input', (e) => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(async () => {
+                const query = e.target.value.trim();
+                if (query.length < 1) {
+                    dropdown.style.display = 'none';
+                    document.getElementById('vehicleInfo').style.display = 'none';
+                    return;
+                }
+
+                try {
+                    const vehicles = await this.makeRequest(`/api/vehicles/search?query=${encodeURIComponent(query)}`);
+                    this.showVehicleSuggestions(vehicles, dropdown);
+                } catch (error) {
+                    console.error('Error fetching vehicle suggestions:', error);
+                }
+            }, 300);
+        });
+
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+
+    showVehicleSuggestions(vehicles, dropdown) {
+        if (vehicles.length === 0) {
+            dropdown.style.display = 'none';
+            return;
         }
+
+        dropdown.innerHTML = vehicles.map(vehicle => `
+            <div class="autocomplete-item" data-plate="${vehicle.licensePlate}" data-type="${vehicle.type}" data-weight="${vehicle.weight}">
+                <strong>${vehicle.licensePlate}</strong> - ${vehicle.type} (${vehicle.weight}kg)
+            </div>
+        `).join('');
+
+        dropdown.style.display = 'block';
+
+        // Add click handlers
+        dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const plate = item.dataset.plate;
+                const type = item.dataset.type;
+                const weight = item.dataset.weight;
+
+                document.getElementById('ticketLicensePlate').value = plate;
+                document.getElementById('vehicleDetails').textContent = `${type} (${weight}kg)`;
+                document.getElementById('vehicleInfo').style.display = 'block';
+                dropdown.style.display = 'none';
+            });
+        });
+    }
+
+    setupRouteAutocomplete() {
+        const input = document.getElementById('ticketRouteName');
+        const dropdown = document.getElementById('routeDropdown');
+        let debounceTimer;
+
+        input.addEventListener('input', (e) => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(async () => {
+                const query = e.target.value.trim();
+                if (query.length < 1) {
+                    dropdown.style.display = 'none';
+                    document.getElementById('routeInfo').style.display = 'none';
+                    return;
+                }
+
+                try {
+                    const routes = await this.makeRequest(`/api/routes/search?query=${encodeURIComponent(query)}`);
+                    this.showRouteSuggestions(routes, dropdown);
+                } catch (error) {
+                    console.error('Error fetching route suggestions:', error);
+                }
+            }, 300);
+        });
+
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+
+    showRouteSuggestions(routes, dropdown) {
+        if (routes.length === 0) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        dropdown.innerHTML = routes.map(route => `
+            <div class="autocomplete-item" data-name="${route.name}" data-weight="${route.weightRestriction}">
+                <strong>${route.name}</strong> - Weight limit: ${route.weightRestriction}kg
+            </div>
+        `).join('');
+
+        dropdown.style.display = 'block';
+
+        // Add click handlers
+        dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const name = item.dataset.name;
+                const weightLimit = item.dataset.weight;
+
+                document.getElementById('ticketRouteName').value = name;
+                document.getElementById('routeDetails').textContent = `${weightLimit}kg`;
+                document.getElementById('routeInfo').style.display = 'block';
+                dropdown.style.display = 'none';
+            });
+        });
     }
 
     async saveTicket() {
         const ticketData = {
-            vehicle_id: parseInt(document.getElementById('ticketVehicle').value),
-            route_id: parseInt(document.getElementById('ticketRoute').value),
+            licensePlate: document.getElementById('ticketLicensePlate').value,
+            routeName: document.getElementById('ticketRouteName').value,
+            ticket_type: document.getElementById('ticketType').value,
             violationDetails: document.getElementById('ticketViolationDetails').value,
             fine_amount: parseFloat(document.getElementById('ticketFineAmount').value)
         };
