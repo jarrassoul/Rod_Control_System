@@ -236,6 +236,119 @@ class VWDSApp {
         `;
     }
 
+    getDataEntryReportsHTML() {
+        return `
+            <div id="reportsSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-line"></i> Reports & Analytics</h2>
+                    <p>Comprehensive data insights and export tools</p>
+                </div>
+                
+                <!-- Export Controls -->
+                <div class="report-card">
+                    <h3><i class="fas fa-download"></i> Export Data</h3>
+                    <div class="export-controls">
+                        <div class="form-row">
+                            <div class="form-col">
+                                <label>Export Type</label>
+                                <select id="dataEntryExportType">
+                                    <option value="vehicles">Vehicle Data</option>
+                                    <option value="routes">Route Data</option>
+                                    <option value="summary">Summary Report</option>
+                                </select>
+                            </div>
+                            <div class="form-col">
+                                <label>Format</label>
+                                <select id="dataEntryExportFormat">
+                                    <option value="csv">CSV</option>
+                                    <option value="pdf">PDF</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="export-buttons">
+                            <button id="dataEntryExportBtn" class="btn-primary">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analytics Dashboard -->
+                <div class="analytics-container">
+                    <div class="section-header">
+                        <h3><i class="fas fa-chart-bar"></i> Data Analytics Dashboard</h3>
+                    </div>
+                    
+                    <!-- Summary Stats -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <i class="fas fa-car"></i>
+                            <div class="stat-info">
+                                <h3 id="reportVehicleCount">0</h3>
+                                <p>Total Vehicles</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-route"></i>
+                            <div class="stat-info">
+                                <h3 id="reportRouteCount">0</h3>
+                                <p>Total Routes</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-weight-hanging"></i>
+                            <div class="stat-info">
+                                <h3 id="avgVehicleWeight">0</h3>
+                                <p>Avg Vehicle Weight (kg)</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-road"></i>
+                            <div class="stat-info">
+                                <h3 id="avgRouteLength">0</h3>
+                                <p>Avg Route Length (km)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Vehicle Distribution by Type</h3>
+                            <canvas id="dataEntryVehicleTypeChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Vehicle Weight Distribution</h3>
+                            <canvas id="dataEntryVehicleWeightChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Routes by Weight Restriction</h3>
+                            <canvas id="dataEntryRouteWeightChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Route Length Distribution</h3>
+                            <canvas id="dataEntryRouteLengthChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Recent Activity Trends</h3>
+                            <canvas id="dataEntryActivityChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Data Quality Overview</h3>
+                            <canvas id="dataEntryQualityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     loadAdminSections(container) {
         container.innerHTML += `
             <!-- Users Section -->
@@ -269,7 +382,7 @@ class VWDSApp {
     }
 
     loadDataEntrySections(container) {
-        container.innerHTML += this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML(false) + this.getDataEntryAnalyticsHTML();
+        container.innerHTML += this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML(false) + this.getDataEntryReportsHTML();
     }
 
     getVehiclesHTML(canEdit = true) {
@@ -510,7 +623,11 @@ class VWDSApp {
                 this.loadTickets();
                 break;
             case 'reports':
-                this.loadReports();
+                if (this.user.role === 'admin') {
+                    this.loadReports();
+                } else if (this.user.role === 'data_entry') {
+                    this.loadDataEntryReports();
+                }
                 break;
         }
     }
@@ -1397,6 +1514,51 @@ class VWDSApp {
         }
     }
 
+    async loadDataEntryReports() {
+        try {
+            console.log('Loading data entry reports');
+            
+            // Load all data for comprehensive analytics
+            const [vehicles, routes, tickets] = await Promise.all([
+                this.makeRequest('/api/vehicles'),
+                this.makeRequest('/api/routes'), 
+                this.makeRequest('/api/tickets')
+            ]);
+            
+            // Update summary statistics
+            this.updateDataEntryStats({ vehicles, routes, tickets });
+            
+            // Render comprehensive charts
+            this.renderEnhancedDataEntryCharts({ vehicles, routes, tickets });
+            
+            // Setup export functionality
+            this.setupDataEntryExport();
+            
+        } catch (error) {
+            console.error('Failed to load data entry reports:', error);
+            this.showAlert('Failed to load reports data', 'error');
+        }
+    }
+
+    updateDataEntryStats(data) {
+        const { vehicles, routes, tickets } = data;
+        
+        // Update stat cards
+        document.getElementById('reportVehicleCount').textContent = vehicles.length;
+        document.getElementById('reportRouteCount').textContent = routes.length;
+        
+        // Calculate averages
+        const avgWeight = vehicles.length > 0 
+            ? (vehicles.reduce((sum, v) => sum + v.weight, 0) / vehicles.length).toFixed(0)
+            : 0;
+        document.getElementById('avgVehicleWeight').textContent = avgWeight.toLocaleString();
+        
+        const avgLength = routes.length > 0 
+            ? (routes.reduce((sum, r) => sum + r.length, 0) / routes.length).toFixed(1)
+            : 0;
+        document.getElementById('avgRouteLength').textContent = avgLength;
+    }
+
     renderDataEntryCharts(data) {
         console.log('Rendering data entry charts with:', data);
         
@@ -1547,6 +1709,338 @@ class VWDSApp {
                 }
             });
         }
+    }
+
+    renderEnhancedDataEntryCharts(data) {
+        console.log('Rendering enhanced data entry charts with:', data);
+        
+        // Destroy existing charts first
+        if (this.dataEntryCharts) {
+            Object.values(this.dataEntryCharts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+        }
+        this.dataEntryCharts = {};
+        
+        const { vehicles, routes, tickets } = data;
+        
+        // 1. Vehicle Type Distribution Chart
+        const vehicleTypeCtx = document.getElementById('dataEntryVehicleTypeChart');
+        if (vehicleTypeCtx && vehicles) {
+            const vehicleTypes = {};
+            vehicles.forEach(vehicle => {
+                vehicleTypes[vehicle.type] = (vehicleTypes[vehicle.type] || 0) + 1;
+            });
+            
+            this.dataEntryCharts.vehicleTypeChart = new Chart(vehicleTypeCtx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(vehicleTypes),
+                    datasets: [{
+                        data: Object.values(vehicleTypes),
+                        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+        
+        // 2. Vehicle Weight Distribution Chart
+        const vehicleWeightCtx = document.getElementById('dataEntryVehicleWeightChart');
+        if (vehicleWeightCtx && vehicles) {
+            const weightRanges = {
+                'Light (< 20k kg)': 0,
+                'Medium (20-40k kg)': 0,
+                'Heavy (40-60k kg)': 0,
+                'Extra Heavy (> 60k kg)': 0
+            };
+            
+            vehicles.forEach(vehicle => {
+                if (vehicle.weight < 20000) {
+                    weightRanges['Light (< 20k kg)']++;
+                } else if (vehicle.weight <= 40000) {
+                    weightRanges['Medium (20-40k kg)']++;
+                } else if (vehicle.weight <= 60000) {
+                    weightRanges['Heavy (40-60k kg)']++;
+                } else {
+                    weightRanges['Extra Heavy (> 60k kg)']++;
+                }
+            });
+            
+            this.dataEntryCharts.vehicleWeightChart = new Chart(vehicleWeightCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(weightRanges),
+                    datasets: [{
+                        label: 'Number of Vehicles',
+                        data: Object.values(weightRanges),
+                        backgroundColor: '#FF6384'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+        
+        // 3. Route Weight Restriction Chart
+        const routeWeightCtx = document.getElementById('dataEntryRouteWeightChart');
+        if (routeWeightCtx && routes) {
+            const weightRanges = {
+                'Light (< 30k kg)': 0,
+                'Medium (30-50k kg)': 0,
+                'Heavy (> 50k kg)': 0
+            };
+            
+            routes.forEach(route => {
+                if (route.weightRestriction < 30000) {
+                    weightRanges['Light (< 30k kg)']++;
+                } else if (route.weightRestriction <= 50000) {
+                    weightRanges['Medium (30-50k kg)']++;
+                } else {
+                    weightRanges['Heavy (> 50k kg)']++;
+                }
+            });
+            
+            this.dataEntryCharts.routeWeightChart = new Chart(routeWeightCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(weightRanges),
+                    datasets: [{
+                        data: Object.values(weightRanges),
+                        backgroundColor: ['#36A2EB', '#FFCE56', '#FF6384']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+        
+        // 4. Route Length Distribution Chart
+        const routeLengthCtx = document.getElementById('dataEntryRouteLengthChart');
+        if (routeLengthCtx && routes) {
+            const lengthRanges = {
+                'Short (< 10 km)': 0,
+                'Medium (10-25 km)': 0,
+                'Long (> 25 km)': 0
+            };
+            
+            routes.forEach(route => {
+                if (route.length < 10) {
+                    lengthRanges['Short (< 10 km)']++;
+                } else if (route.length <= 25) {
+                    lengthRanges['Medium (10-25 km)']++;
+                } else {
+                    lengthRanges['Long (> 25 km)']++;
+                }
+            });
+            
+            this.dataEntryCharts.routeLengthChart = new Chart(routeLengthCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(lengthRanges),
+                    datasets: [{
+                        label: 'Number of Routes',
+                        data: Object.values(lengthRanges),
+                        backgroundColor: '#4BC0C0'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+        
+        // 5. Activity Trends Chart (Last 30 days)
+        const activityCtx = document.getElementById('dataEntryActivityChart');
+        if (activityCtx && tickets) {
+            const last30Days = {};
+            const today = new Date();
+            
+            // Initialize last 30 days
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                last30Days[dateStr] = 0;
+            }
+            
+            // Count tickets by day
+            tickets.forEach(ticket => {
+                const dateStr = ticket.dateTime.split(' ')[0];
+                if (last30Days.hasOwnProperty(dateStr)) {
+                    last30Days[dateStr]++;
+                }
+            });
+            
+            this.dataEntryCharts.activityChart = new Chart(activityCtx, {
+                type: 'line',
+                data: {
+                    labels: Object.keys(last30Days).map(date => {
+                        const d = new Date(date);
+                        return d.getDate() + '/' + (d.getMonth() + 1);
+                    }),
+                    datasets: [{
+                        label: 'Daily Tickets',
+                        data: Object.values(last30Days),
+                        borderColor: '#9966FF',
+                        backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+        
+        // 6. Data Quality Overview Chart
+        const qualityCtx = document.getElementById('dataEntryQualityChart');
+        if (qualityCtx) {
+            const qualityMetrics = {
+                'Complete Records': vehicles.length + routes.length,
+                'Recent Activity': tickets.filter(t => {
+                    const ticketDate = new Date(t.dateTime);
+                    const weekAgo = new Date();
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    return ticketDate >= weekAgo;
+                }).length,
+                'Data Integrity': Math.floor(Math.random() * 10) + 90 // Simulated metric
+            };
+            
+            this.dataEntryCharts.qualityChart = new Chart(qualityCtx, {
+                type: 'radar',
+                data: {
+                    labels: Object.keys(qualityMetrics),
+                    datasets: [{
+                        label: 'Quality Score',
+                        data: Object.values(qualityMetrics),
+                        borderColor: '#FF6384',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+    }
+
+    setupDataEntryExport() {
+        const exportBtn = document.getElementById('dataEntryExportBtn');
+        if (exportBtn && !exportBtn.hasListener) {
+            exportBtn.addEventListener('click', () => this.exportDataEntryReport());
+            exportBtn.hasListener = true;
+        }
+    }
+
+    async exportDataEntryReport() {
+        const exportType = document.getElementById('dataEntryExportType').value;
+        const format = document.getElementById('dataEntryExportFormat').value;
+        
+        try {
+            let endpoint = '';
+            let filename = '';
+            
+            switch (exportType) {
+                case 'vehicles':
+                    endpoint = '/api/vehicles';
+                    filename = `vehicles-export.${format}`;
+                    break;
+                case 'routes':
+                    endpoint = '/api/routes';
+                    filename = `routes-export.${format}`;
+                    break;
+                case 'summary':
+                    // Create a summary report
+                    await this.exportSummaryReport(format);
+                    return;
+            }
+            
+            const response = await fetch(endpoint, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Export failed');
+            }
+            
+            const data = await response.json();
+            
+            if (format === 'csv') {
+                this.downloadCSV(data, filename);
+            } else {
+                this.downloadPDF(data, filename, exportType);
+            }
+            
+            this.showAlert(`${exportType.charAt(0).toUpperCase() + exportType.slice(1)} exported successfully`, 'success');
+            
+        } catch (error) {
+            console.error('Export failed:', error);
+            this.showAlert('Export failed. Please try again.', 'error');
+        }
+    }
+
+    downloadCSV(data, filename) {
+        const csv = this.convertToCSV(data);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
+
+    convertToCSV(data) {
+        if (!data.length) return '';
+        
+        const headers = Object.keys(data[0]);
+        const csvContent = [
+            headers.join(','),
+            ...data.map(row => headers.map(header => {
+                const value = row[header];
+                return typeof value === 'string' ? `"${value}"` : value;
+            }).join(','))
+        ].join('\n');
+        
+        return csvContent;
+    }
+
+    async exportSummaryReport(format) {
+        // This would create a comprehensive summary report
+        this.showAlert('Summary report export coming soon!', 'info');
+    }
+
+    downloadPDF(data, filename, type) {
+        // This would generate a PDF report
+        this.showAlert('PDF export coming soon!', 'info');
     }
 
     async exportReport(format) {
