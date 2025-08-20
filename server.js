@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const json2csv = require('json2csv');
+const PDFDocument = require('pdfkit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -454,7 +456,246 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
     });
 });
 
-// Serve frontend
+// Reports endpoints
+app.get('/api/reports/tickets/csv', authenticateToken, authorizeRole(['admin']), (req, res) => {
+    const { startDate, endDate, ticketType } = req.query;
+    
+    let query = `
+        SELECT t.*, v.licensePlate, v.type as vehicleType, r.name as routeName, u.username as officerName
+        FROM Ticket t
+        LEFT JOIN Vehicle v ON t.vehicle_id = v.id
+        LEFT JOIN Route r ON t.route_id = r.id
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (startDate) {
+        query += ' AND DATE(t.dateTime) >= ?';
+        params.push(startDate);
+    }
+    
+    if (endDate) {
+        query += ' AND DATE(t.dateTime) <= ?';
+        params.push(endDate);
+    }
+    
+    if (ticketType && ticketType !== 'all') {
+        query += ' AND t.ticket_type = ?';
+        params.push(ticketType);
+    }
+    
+    query += ' ORDER BY t.dateTime DESC';
+    
+    db.all(query, params, (err, tickets) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        
+        try {
+            const fields = [
+                'dateTime',
+                'licensePlate',
+                'vehicleType',
+                'routeName',
+                'officerName',
+                'ticket_type',
+                'violationDetails',
+                'fine_amount',
+                'status'
+            ];
+            
+            const csv = json2csv.parse(tickets, { fields });
+            
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', 'attachment; filename="tickets-report.csv"');
+            res.send(csv);
+        } catch (error) {
+            res.status(500).json({ error: 'Error generating CSV' });
+        }
+    });
+});
+
+app.get('/api/reports/tickets/pdf', authenticateToken, authorizeRole(['admin']), (req, res) => {
+    const { startDate, endDate, ticketType } = req.query;
+    
+    let query = `
+        SELECT t.*, v.licensePlate, v.type as vehicleType, r.name as routeName, u.username as officerName
+        FROM Ticket t
+        LEFT JOIN Vehicle v ON t.vehicle_id = v.id
+        LEFT JOIN Route r ON t.route_id = r.id
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (startDate) {
+        query += ' AND DATE(t.dateTime) >= ?';
+        params.push(startDate);
+    }
+    
+    if (endDate) {
+        query += ' AND DATE(t.dateTime) <= ?';
+        params.push(endDate);
+    }
+    
+    if (ticketType && ticketType !== 'all') {
+        query += ' AND t.ticket_type = ?';
+        params.push(ticketType);
+    }
+    
+    query += ' ORDER BY t.dateTime DESC';
+    
+    db.all(query, params, (err, tickets) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        
+        try {
+            const doc = new PDFDocument();
+            
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'attachment; filename="tickets-report.pdf"');
+            
+            doc.pipe(res);
+            
+            // Header
+            doc.fontSize(20).text('VWDS Tickets Report', { align: 'center' });
+            doc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center' });
+            doc.moveDown();
+            
+            if (startDate || endDate) {
+                doc.text(`Date Range: ${startDate || 'Start'} to ${endDate || 'End'}`);
+            }
+            if (ticketType && ticketType !== 'all') {
+                doc.text(`Ticket Type: ${ticketType}`);
+            }
+            doc.text(`Total Tickets: ${tickets.length}`);
+            doc.moveDown();
+            
+            // Table headers
+            const startY = doc.y;
+            const colWidths = [60, 80, 60, 80, 60, 80, 60];
+            const headers = ['Date', 'License', 'Type', 'Route', 'Officer', 'Violation', 'Fine'];
+            
+            let x = 50;
+            headers.forEach((header, i) => {
+                doc.fontSize(10).text(header, x, startY, { width: colWidths[i], align: 'left' });
+                x += colWidths[i];
+            });
+            
+            doc.moveDown();
+            
+            // Table data
+            tickets.forEach((ticket) => {
+                const y = doc.y;
+                x = 50;
+                
+                const rowData = [
+                    new Date(ticket.dateTime).toLocaleDateString(),
+                    ticket.licensePlate || 'N/A',
+                    ticket.ticket_type || 'N/A',
+                    ticket.routeName || 'N/A',
+                    ticket.officerName || 'N/A',
+                    (ticket.violationDetails || '').substring(0, 20) + '...',
+                    `$${ticket.fine_amount || 0}`
+                ];
+                
+                rowData.forEach((data, i) => {
+                    doc.fontSize(8).text(data, x, y, { width: colWidths[i], align: 'left' });
+                    x += colWidths[i];
+                });
+                
+                doc.moveDown(0.5);
+                
+                if (doc.y > 700) {
+                    doc.addPage();
+                }
+            });
+            
+            doc.end();
+        } catch (error) {
+            res.status(500).json({ error: 'Error generating PDF' });
+        }
+    });
+});
+
+app.get('/api/reports/analytics', authenticateToken, authorizeRole(['admin']), (req, res) => {
+    const queries = {
+        ticketsByType: `
+            SELECT ticket_type, COUNT(*) as count 
+            FROM Ticket 
+            GROUP BY ticket_type
+        `,
+        ticketsByMonth: `
+            SELECT 
+                strftime('%Y-%m', dateTime) as month,
+                COUNT(*) as count
+            FROM Ticket 
+            WHERE dateTime >= date('now', '-12 months')
+            GROUP BY strftime('%Y-%m', dateTime)
+            ORDER BY month
+        `,
+        topRoutes: `
+            SELECT r.name, COUNT(t.id) as violations
+            FROM Route r
+            LEFT JOIN Ticket t ON r.id = t.route_id
+            GROUP BY r.id, r.name
+            ORDER BY violations DESC
+            LIMIT 10
+        `,
+        topOfficers: `
+            SELECT u.username, COUNT(t.id) as tickets_issued
+            FROM users u
+            LEFT JOIN Ticket t ON u.id = t.officer_id
+            WHERE u.role = 'police_officer'
+            GROUP BY u.id, u.username
+            ORDER BY tickets_issued DESC
+            LIMIT 10
+        `
+    };
+    
+    Promise.all([
+        new Promise((resolve, reject) => {
+            db.all(queries.ticketsByType, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
+            });
+        }),
+        new Promise((resolve, reject) => {
+            db.all(queries.ticketsByMonth, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
+            });
+        }),
+        new Promise((resolve, reject) => {
+            db.all(queries.topRoutes, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
+            });
+        }),
+        new Promise((resolve, reject) => {
+            db.all(queries.topOfficers, (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
+            });
+        })
+    ]).then(([ticketsByType, ticketsByMonth, topRoutes, topOfficers]) => {
+        res.json({
+            ticketsByType,
+            ticketsByMonth,
+            topRoutes,
+            topOfficers
+        });
+    }).catch(err => {
+        console.error('Analytics error:', err);
+        res.status(500).json({ error: 'Database error', details: err.message });
+    });
+});
+
+// Serve frontend - MUST be last route
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

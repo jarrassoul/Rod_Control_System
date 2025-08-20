@@ -4,12 +4,21 @@ class VWDSApp {
         this.user = JSON.parse(localStorage.getItem('vwds_user') || 'null');
         this.baseURL = '';
         
+        // Session management
+        this.inactivityTimeout = 30 * 60 * 1000; // 30 minutes in milliseconds
+        this.warningTime = 5 * 60 * 1000; // 5 minutes warning before logout
+        this.inactivityTimer = null;
+        this.warningTimer = null;
+        this.warningShown = false;
+        
         this.init();
     }
 
     init() {
         if (this.token && this.user) {
             this.showRoleSpecificPortal();
+            this.startInactivityTimer();
+            this.setupActivityListeners();
         } else {
             this.showLogin();
         }
@@ -63,6 +72,8 @@ class VWDSApp {
                 
                 console.log('Calling showRoleSpecificPortal for role:', this.user.role); // Debug log
                 this.showRoleSpecificPortal();
+                this.startInactivityTimer();
+                this.setupActivityListeners();
             } else {
                 this.showAlert(data.error, 'error');
             }
@@ -179,6 +190,16 @@ class VWDSApp {
                         </div>
                     </div>
                 </div>
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>Tickets by Type</h3>
+                        <canvas id="ticketTypeChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Monthly Tickets</h3>
+                        <canvas id="monthlyTicketsChart"></canvas>
+                    </div>
+                </div>
             </div>
         `;
     }
@@ -208,7 +229,7 @@ class VWDSApp {
                     </table>
                 </div>
             </div>
-        ` + this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML();
+        ` + this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML() + this.getReportsHTML();
     }
 
     loadPoliceSections(container) {
@@ -297,7 +318,64 @@ class VWDSApp {
         `;
     }
 
+    getReportsHTML() {
+        return `
+            <div id="reportsSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-bar"></i> Reports & Analytics</h2>
+                </div>
+                <div class="reports-container">
+                    <div class="report-card">
+                        <h3><i class="fas fa-download"></i> Export Reports</h3>
+                        <div class="export-controls">
+                            <div class="form-row">
+                                <div class="form-col">
+                                    <label>Start Date</label>
+                                    <input type="date" id="reportStartDate">
+                                </div>
+                                <div class="form-col">
+                                    <label>End Date</label>
+                                    <input type="date" id="reportEndDate">
+                                </div>
+                                <div class="form-col">
+                                    <label>Ticket Type</label>
+                                    <select id="reportTicketType">
+                                        <option value="all">All Types</option>
+                                        <option value="speed">Speeding</option>
+                                        <option value="overload">Overload</option>
+                                        <option value="illegal_parking">Illegal Parking</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="export-buttons">
+                                <button id="exportCsvBtn" class="btn-primary">
+                                    <i class="fas fa-file-csv"></i> Export CSV
+                                </button>
+                                <button id="exportPdfBtn" class="btn-secondary">
+                                    <i class="fas fa-file-pdf"></i> Export PDF
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="analytics-grid">
+                        <div class="chart-card">
+                            <h3>Top Violation Routes</h3>
+                            <canvas id="topRoutesChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Officer Performance</h3>
+                            <canvas id="officerPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     logout() {
+        this.clearTimers();
+        this.hideSessionWarning();
         localStorage.removeItem('vwds_token');
         localStorage.removeItem('vwds_user');
         this.token = null;
@@ -352,6 +430,19 @@ class VWDSApp {
             addTicketBtn.addEventListener('click', () => this.showTicketForm());
             addTicketBtn.hasListener = true;
         }
+
+        // Export buttons
+        const exportCsvBtn = document.getElementById('exportCsvBtn');
+        if (exportCsvBtn && !exportCsvBtn.hasListener) {
+            exportCsvBtn.addEventListener('click', () => this.exportReport('csv'));
+            exportCsvBtn.hasListener = true;
+        }
+
+        const exportPdfBtn = document.getElementById('exportPdfBtn');
+        if (exportPdfBtn && !exportPdfBtn.hasListener) {
+            exportPdfBtn.addEventListener('click', () => this.exportReport('pdf'));
+            exportPdfBtn.hasListener = true;
+        }
     }
 
     showSection(sectionName) {
@@ -385,6 +476,9 @@ class VWDSApp {
                 break;
             case 'tickets':
                 this.loadTickets();
+                break;
+            case 'reports':
+                this.loadReports();
                 break;
         }
     }
@@ -421,6 +515,11 @@ class VWDSApp {
             document.getElementById('totalVehicles').textContent = stats.totalVehicles;
             document.getElementById('totalRoutes').textContent = stats.totalRoutes;
             document.getElementById('totalUsers').textContent = stats.totalUsers;
+            
+            // Load analytics for charts
+            if (this.user.role === 'admin') {
+                await this.loadAnalytics();
+            }
         } catch (error) {
             console.error('Failed to load dashboard:', error);
         }
@@ -1085,6 +1184,319 @@ class VWDSApp {
 
     async loadRouteData(routeId) {
         // Implementation would load route data and populate form
+    }
+
+    async loadAnalytics() {
+        try {
+            const analytics = await this.makeRequest('/api/reports/analytics');
+            console.log('Analytics data:', analytics); // Debug log
+            
+            // Provide default empty data if no data exists
+            const safeAnalytics = {
+                ticketsByType: analytics.ticketsByType || [],
+                ticketsByMonth: analytics.ticketsByMonth || [],
+                topRoutes: analytics.topRoutes || [],
+                topOfficers: analytics.topOfficers || []
+            };
+            
+            this.renderCharts(safeAnalytics);
+        } catch (error) {
+            console.error('Failed to load analytics:', error);
+            this.showAlert('Failed to load analytics data', 'error');
+            
+            // Render empty charts on error
+            this.renderCharts({
+                ticketsByType: [],
+                ticketsByMonth: [],
+                topRoutes: [],
+                topOfficers: []
+            });
+        }
+    }
+
+    renderCharts(analytics) {
+        // Tickets by Type Chart
+        const typeCtx = document.getElementById('ticketTypeChart');
+        if (typeCtx) {
+            const hasTypeData = analytics.ticketsByType && analytics.ticketsByType.length > 0;
+            new Chart(typeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: hasTypeData ? analytics.ticketsByType.map(item => this.formatTicketType(item.ticket_type)) : ['No Data'],
+                    datasets: [{
+                        data: hasTypeData ? analytics.ticketsByType.map(item => item.count) : [1],
+                        backgroundColor: hasTypeData ? ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'] : ['#e0e0e0']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: hasTypeData
+                        }
+                    }
+                }
+            });
+        }
+
+        // Monthly Tickets Chart
+        const monthlyCtx = document.getElementById('monthlyTicketsChart');
+        if (monthlyCtx) {
+            new Chart(monthlyCtx, {
+                type: 'line',
+                data: {
+                    labels: analytics.ticketsByMonth.map(item => item.month),
+                    datasets: [{
+                        label: 'Tickets',
+                        data: analytics.ticketsByMonth.map(item => item.count),
+                        borderColor: '#36A2EB',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Top Routes Chart
+        const routesCtx = document.getElementById('topRoutesChart');
+        if (routesCtx) {
+            new Chart(routesCtx, {
+                type: 'bar',
+                data: {
+                    labels: analytics.topRoutes.slice(0, 5).map(item => item.name),
+                    datasets: [{
+                        label: 'Violations',
+                        data: analytics.topRoutes.slice(0, 5).map(item => item.violations),
+                        backgroundColor: '#FF6384'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Officer Performance Chart
+        const officerCtx = document.getElementById('officerPerformanceChart');
+        if (officerCtx) {
+            new Chart(officerCtx, {
+                type: 'bar',
+                data: {
+                    labels: analytics.topOfficers.slice(0, 5).map(item => item.username),
+                    datasets: [{
+                        label: 'Tickets Issued',
+                        data: analytics.topOfficers.slice(0, 5).map(item => item.tickets_issued),
+                        backgroundColor: '#4BC0C0'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    async loadReports() {
+        if (this.user.role === 'admin') {
+            await this.loadAnalytics();
+        }
+    }
+
+    async exportReport(format) {
+        const startDate = document.getElementById('reportStartDate').value;
+        const endDate = document.getElementById('reportEndDate').value;
+        const ticketType = document.getElementById('reportTicketType').value;
+
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        if (ticketType) params.append('ticketType', ticketType);
+
+        const url = `/api/reports/tickets/${format}?${params.toString()}`;
+        
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Export failed');
+            }
+
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `tickets-report.${format}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(downloadUrl);
+
+            this.showAlert(`Report exported successfully as ${format.toUpperCase()}`, 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.showAlert('Failed to export report', 'error');
+        }
+    }
+
+    // Session Management Methods
+    startInactivityTimer() {
+        this.clearTimers();
+        
+        // Set warning timer (25 minutes - 5 minutes before timeout)
+        this.warningTimer = setTimeout(() => {
+            this.showSessionWarning();
+        }, this.inactivityTimeout - this.warningTime);
+        
+        // Set logout timer (30 minutes)
+        this.inactivityTimer = setTimeout(() => {
+            this.autoLogout();
+        }, this.inactivityTimeout);
+    }
+
+    resetInactivityTimer() {
+        if (this.warningShown) {
+            this.hideSessionWarning();
+        }
+        this.startInactivityTimer();
+    }
+
+    clearTimers() {
+        if (this.inactivityTimer) {
+            clearTimeout(this.inactivityTimer);
+            this.inactivityTimer = null;
+        }
+        if (this.warningTimer) {
+            clearTimeout(this.warningTimer);
+            this.warningTimer = null;
+        }
+    }
+
+    setupActivityListeners() {
+        // Events that indicate user activity
+        const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+        
+        events.forEach(event => {
+            document.addEventListener(event, () => {
+                this.resetInactivityTimer();
+            }, true);
+        });
+    }
+
+    showSessionWarning() {
+        this.warningShown = true;
+        
+        const warningModal = document.createElement('div');
+        warningModal.id = 'sessionWarningModal';
+        warningModal.className = 'modal active';
+        warningModal.innerHTML = `
+            <div class="modal-content session-warning">
+                <div class="warning-header">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h2>Session Timeout Warning</h2>
+                </div>
+                <div class="warning-body">
+                    <p>Your session will expire in <span id="countdown">5:00</span> due to inactivity.</p>
+                    <p>Click "Stay Logged In" to continue your session.</p>
+                </div>
+                <div class="warning-actions">
+                    <button id="stayLoggedInBtn" class="btn-primary">
+                        <i class="fas fa-clock"></i> Stay Logged In
+                    </button>
+                    <button id="logoutNowBtn" class="btn-secondary">
+                        <i class="fas fa-sign-out-alt"></i> Logout Now
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(warningModal);
+        
+        // Start countdown
+        this.startCountdown();
+        
+        // Event listeners
+        document.getElementById('stayLoggedInBtn').addEventListener('click', () => {
+            this.extendSession();
+        });
+        
+        document.getElementById('logoutNowBtn').addEventListener('click', () => {
+            this.autoLogout();
+        });
+    }
+
+    startCountdown() {
+        let timeLeft = this.warningTime / 1000; // Convert to seconds
+        const countdownElement = document.getElementById('countdown');
+        
+        this.countdownInterval = setInterval(() => {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            
+            if (countdownElement) {
+                countdownElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+            
+            timeLeft--;
+            
+            if (timeLeft < 0) {
+                clearInterval(this.countdownInterval);
+            }
+        }, 1000);
+    }
+
+    hideSessionWarning() {
+        const warningModal = document.getElementById('sessionWarningModal');
+        if (warningModal) {
+            warningModal.remove();
+        }
+        
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+        }
+        
+        this.warningShown = false;
+    }
+
+    extendSession() {
+        this.hideSessionWarning();
+        this.resetInactivityTimer();
+        this.showAlert('Session extended successfully', 'success');
+    }
+
+    autoLogout() {
+        this.clearTimers();
+        this.hideSessionWarning();
+        this.showAlert('Session expired due to inactivity', 'warning');
+        
+        setTimeout(() => {
+            this.logout();
+        }, 2000);
     }
 }
 
