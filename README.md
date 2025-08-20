@@ -4,22 +4,28 @@ A modern web-based frontend for the Vehicle Weight Detection System with role-ba
 
 ## Features
 
-### 🚀 **Admin Portal**
+### **Admin Portal**
 - **User Management**: Create, edit, and delete system users
 - **Role-Based Access Control**: Admin, Police Officer, and Data Entry roles
 - **Dashboard**: Real-time statistics and overview
 - **Complete CRUD Operations**: Full management of all system entities
 
-### 👮 **Police Officer Interface**
+### **Police Officer Interface**
 - **Ticket Generation**: Create violation tickets for vehicles
 - **Vehicle Lookup**: Search and view vehicle information
 - **Route Information**: Access route details and restrictions
 - **Ticket History**: View generated tickets
 
-### 📊 **Data Entry Interface**
+### **Data Entry Interface**
 - **Vehicle Management**: Add, edit, and delete vehicle records
 - **Route Management**: Manage routes with weight restrictions
 - **Data Validation**: Ensure data integrity and format compliance
+
+### **Reports & Analytics**
+- **Data Visualization**: Interactive charts showing ticket statistics and trends
+- **Export Capabilities**: Generate reports in CSV and PDF formats
+- **Real-time Analytics**: Dashboard with live statistics and performance metrics
+- **Chart Types**: Pie charts for ticket types, line charts for monthly trends, bar charts for route and officer performance
 
 ## Technology Stack
 
@@ -28,6 +34,8 @@ A modern web-based frontend for the Vehicle Weight Detection System with role-ba
 - **Frontend**: Vanilla JavaScript, HTML5, CSS3
 - **Authentication**: JWT-based authentication
 - **Security**: bcrypt password hashing, role-based authorization
+- **Charts**: Chart.js for data visualization
+- **Reports**: PDFKit for PDF generation, json2csv for CSV exports
 
 ## Quick Start
 
@@ -65,20 +73,21 @@ A modern web-based frontend for the Vehicle Weight Detection System with role-ba
 
 ## User Roles & Permissions
 
-### 🔧 **Admin**
+### **Admin**
 - Full system access
 - User management (create, edit, delete users)
 - Vehicle and route management
 - Ticket oversight
 - System statistics and reporting
+- Reports and analytics access (CSV/PDF export, data visualization)
 
-### 👮 **Police Officer**
+### **Police Officer**
 - Generate violation tickets
 - View vehicles and routes (read-only)
 - Access ticket history
 - Dashboard statistics
 
-### 📝 **Data Entry**
+### **Data Entry**
 - Manage vehicle records (add, edit, delete)
 - Manage route information (add, edit, delete)
 - View tickets (read-only)
@@ -110,6 +119,11 @@ A modern web-based frontend for the Vehicle Weight Detection System with role-ba
 ### Tickets
 - `GET /api/tickets` - List tickets
 - `POST /api/tickets` - Generate ticket (Admin/Police Officer)
+
+### Reports
+- `GET /api/reports/tickets/csv` - Export tickets as CSV (Admin only)
+- `GET /api/reports/tickets/pdf` - Export tickets as PDF (Admin only)
+- `GET /api/reports/analytics` - Get analytics data for charts (Admin only)
 
 ### Dashboard
 - `GET /api/dashboard/stats` - System statistics
@@ -188,6 +202,8 @@ This frontend replaces the console-based Java application with:
 - Real-time dashboard and statistics
 
 The original Java backend functionality has been preserved and enhanced with additional features for production use.
+
+**Note**: The `Ticket_Issue_for_Trucks.iml` file is a legacy IntelliJ IDEA module file from the original Java implementation and is no longer needed for the current Node.js application.
 
 ## License
 
