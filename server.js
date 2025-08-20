@@ -625,9 +625,11 @@ app.get('/api/reports/tickets/pdf', authenticateToken, authorizeRole(['admin']),
 app.get('/api/reports/analytics', authenticateToken, authorizeRole(['admin']), (req, res) => {
     const queries = {
         ticketsByType: `
-            SELECT ticket_type, COUNT(*) as count 
+            SELECT 
+                COALESCE(ticket_type, 'Weight Violation') as ticket_type, 
+                COUNT(*) as count 
             FROM Ticket 
-            GROUP BY ticket_type
+            GROUP BY COALESCE(ticket_type, 'Weight Violation')
         `,
         ticketsByMonth: `
             SELECT 

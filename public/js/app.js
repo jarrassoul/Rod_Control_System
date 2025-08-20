@@ -204,6 +204,38 @@ class VWDSApp {
         `;
     }
 
+    getDataEntryAnalyticsHTML() {
+        return `
+            <div id="analyticsSection" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-bar"></i> Data Analytics</h2>
+                </div>
+                <div class="analytics-container">
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Vehicle Distribution by Type</h3>
+                            <canvas id="dataEntryVehicleTypeChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Routes by Weight Restriction</h3>
+                            <canvas id="dataEntryRouteWeightChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Recent Ticket Trends</h3>
+                            <canvas id="dataEntryTicketTrendChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Data Entry Statistics</h3>
+                            <canvas id="dataEntryStatsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     loadAdminSections(container) {
         container.innerHTML += `
             <!-- Users Section -->
@@ -237,7 +269,7 @@ class VWDSApp {
     }
 
     loadDataEntrySections(container) {
-        container.innerHTML += this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML(false);
+        container.innerHTML += this.getVehiclesHTML() + this.getRoutesHTML() + this.getTicketsHTML(false) + this.getDataEntryAnalyticsHTML();
     }
 
     getVehiclesHTML(canEdit = true) {
@@ -519,6 +551,8 @@ class VWDSApp {
             // Load analytics for charts
             if (this.user.role === 'admin') {
                 await this.loadAnalytics();
+            } else if (this.user.role === 'data_entry') {
+                await this.loadDataEntryAnalytics();
             }
         } catch (error) {
             console.error('Failed to load dashboard:', error);
@@ -1188,8 +1222,11 @@ class VWDSApp {
 
     async loadAnalytics() {
         try {
+            console.log('Loading analytics - user role:', this.user.role);
+            console.log('Token exists:', !!this.token);
+            
             const analytics = await this.makeRequest('/api/reports/analytics');
-            console.log('Analytics data:', analytics); // Debug log
+            console.log('Analytics data received:', analytics); // Debug log
             
             // Provide default empty data if no data exists
             const safeAnalytics = {
@@ -1201,7 +1238,8 @@ class VWDSApp {
             
             this.renderCharts(safeAnalytics);
         } catch (error) {
-            console.error('Failed to load analytics:', error);
+            console.error('Failed to load analytics - full error:', error);
+            console.error('Error message:', error.message);
             this.showAlert('Failed to load analytics data', 'error');
             
             // Render empty charts on error
@@ -1215,11 +1253,23 @@ class VWDSApp {
     }
 
     renderCharts(analytics) {
+        console.log('renderCharts called with data:', analytics);
+        
+        // Destroy existing charts first
+        if (this.charts) {
+            Object.values(this.charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+        }
+        this.charts = {};
+        
         // Tickets by Type Chart
         const typeCtx = document.getElementById('ticketTypeChart');
+        console.log('ticketTypeChart element:', typeCtx);
         if (typeCtx) {
-            const hasTypeData = analytics.ticketsByType && analytics.ticketsByType.length > 0;
-            new Chart(typeCtx, {
+            try {
+                const hasTypeData = analytics.ticketsByType && analytics.ticketsByType.length > 0;
+                this.charts.typeChart = new Chart(typeCtx, {
                 type: 'doughnut',
                 data: {
                     labels: hasTypeData ? analytics.ticketsByType.map(item => this.formatTicketType(item.ticket_type)) : ['No Data'],
@@ -1238,12 +1288,16 @@ class VWDSApp {
                     }
                 }
             });
+            } catch (error) {
+                console.error('Error creating ticket type chart:', error);
+            }
         }
 
         // Monthly Tickets Chart
         const monthlyCtx = document.getElementById('monthlyTicketsChart');
+        console.log('monthlyTicketsChart element:', monthlyCtx);
         if (monthlyCtx) {
-            new Chart(monthlyCtx, {
+            this.charts.monthlyChart = new Chart(monthlyCtx, {
                 type: 'line',
                 data: {
                     labels: analytics.ticketsByMonth.map(item => item.month),
@@ -1269,8 +1323,9 @@ class VWDSApp {
 
         // Top Routes Chart
         const routesCtx = document.getElementById('topRoutesChart');
+        console.log('topRoutesChart element:', routesCtx);
         if (routesCtx) {
-            new Chart(routesCtx, {
+            this.charts.routesChart = new Chart(routesCtx, {
                 type: 'bar',
                 data: {
                     labels: analytics.topRoutes.slice(0, 5).map(item => item.name),
@@ -1294,8 +1349,9 @@ class VWDSApp {
 
         // Officer Performance Chart
         const officerCtx = document.getElementById('officerPerformanceChart');
+        console.log('officerPerformanceChart element:', officerCtx);
         if (officerCtx) {
-            new Chart(officerCtx, {
+            this.charts.officerChart = new Chart(officerCtx, {
                 type: 'bar',
                 data: {
                     labels: analytics.topOfficers.slice(0, 5).map(item => item.username),
@@ -1321,6 +1377,175 @@ class VWDSApp {
     async loadReports() {
         if (this.user.role === 'admin') {
             await this.loadAnalytics();
+        }
+    }
+
+    async loadDataEntryAnalytics() {
+        try {
+            console.log('Loading data entry analytics');
+            
+            // Load vehicles and routes data for charts
+            const [vehicles, routes, tickets] = await Promise.all([
+                this.makeRequest('/api/vehicles'),
+                this.makeRequest('/api/routes'), 
+                this.makeRequest('/api/tickets')
+            ]);
+            
+            this.renderDataEntryCharts({ vehicles, routes, tickets });
+        } catch (error) {
+            console.error('Failed to load data entry analytics:', error);
+        }
+    }
+
+    renderDataEntryCharts(data) {
+        console.log('Rendering data entry charts with:', data);
+        
+        // Destroy existing charts first
+        if (this.dataEntryCharts) {
+            Object.values(this.dataEntryCharts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+        }
+        this.dataEntryCharts = {};
+        
+        // Vehicle Type Distribution Chart
+        const vehicleCtx = document.getElementById('dataEntryVehicleTypeChart');
+        if (vehicleCtx && data.vehicles) {
+            const vehicleTypes = {};
+            data.vehicles.forEach(vehicle => {
+                vehicleTypes[vehicle.type] = (vehicleTypes[vehicle.type] || 0) + 1;
+            });
+            
+            this.dataEntryCharts.vehicleChart = new Chart(vehicleCtx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(vehicleTypes),
+                    datasets: [{
+                        data: Object.values(vehicleTypes),
+                        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+        
+        // Route Weight Distribution Chart
+        const routeCtx = document.getElementById('dataEntryRouteWeightChart');
+        if (routeCtx && data.routes) {
+            const weightRanges = {
+                'Light (< 30k kg)': 0,
+                'Medium (30-50k kg)': 0,
+                'Heavy (> 50k kg)': 0
+            };
+            
+            data.routes.forEach(route => {
+                if (route.weightRestriction < 30000) {
+                    weightRanges['Light (< 30k kg)']++;
+                } else if (route.weightRestriction <= 50000) {
+                    weightRanges['Medium (30-50k kg)']++;
+                } else {
+                    weightRanges['Heavy (> 50k kg)']++;
+                }
+            });
+            
+            this.dataEntryCharts.routeChart = new Chart(routeCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(weightRanges),
+                    datasets: [{
+                        label: 'Number of Routes',
+                        data: Object.values(weightRanges),
+                        backgroundColor: '#36A2EB'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Recent Ticket Trends Chart  
+        const trendCtx = document.getElementById('dataEntryTicketTrendChart');
+        if (trendCtx && data.tickets) {
+            const last7Days = {};
+            const today = new Date();
+            
+            // Initialize last 7 days
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                last7Days[dateStr] = 0;
+            }
+            
+            // Count tickets by day
+            data.tickets.forEach(ticket => {
+                const dateStr = ticket.dateTime.split(' ')[0];
+                if (last7Days.hasOwnProperty(dateStr)) {
+                    last7Days[dateStr]++;
+                }
+            });
+            
+            this.dataEntryCharts.trendChart = new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: Object.keys(last7Days).map(date => new Date(date).toLocaleDateString()),
+                    datasets: [{
+                        label: 'Daily Tickets',
+                        data: Object.values(last7Days),
+                        borderColor: '#FF6384',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Data Entry Statistics Chart
+        const statsCtx = document.getElementById('dataEntryStatsChart');
+        if (statsCtx) {
+            this.dataEntryCharts.statsChart = new Chart(statsCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Vehicles', 'Routes', 'Tickets'],
+                    datasets: [{
+                        data: [
+                            data.vehicles ? data.vehicles.length : 0,
+                            data.routes ? data.routes.length : 0, 
+                            data.tickets ? data.tickets.length : 0
+                        ],
+                        backgroundColor: ['#4BC0C0', '#FFCE56', '#FF6384']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
         }
     }
 
